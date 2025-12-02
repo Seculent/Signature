@@ -519,62 +519,37 @@
                 loadingDiv.style.display = 'none';
             }
         }
-        // === МЕТОД 1: XMLHttpRequest (обходит CORS) ===
-        function submitViaXHR(data) {
+        // === МЕТОД 2: FormData (еще один обход CORS) ===
+        function submitViaFormData() {
             return new Promise((resolve, reject) => {
+                const form = document.getElementById('signatureForm');
+                const formData = new FormData(form);
+                
+                // Добавляем подпись (если не слишком большая)
+                const signature = signaturePad.toDataURL('image/jpeg', 0.5);
+                if (signature.length < 10000) { // Только если маленькая
+                    formData.append('signature', signature);
+                }
+                
+                formData.append('timestamp', new Date().toISOString());
+                formData.append('consent', document.getElementById('consent').checked ? '1' : '0');
+                
                 const xhr = new XMLHttpRequest();
-                const url = GOOGLE_SCRIPT_URL;
-                
-                // Для POST запросов к Google Apps Script
-                xhr.open('POST', url);
-                xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-                
-                // Преобразуем данные в строку
-                const params = Object.keys(data)
-                    .map(key => {
-                        // Кодируем значение, особенно подпись
-                        let value = data[key];
-                        if (typeof value === 'object') {
-                            value = JSON.stringify(value);
-                        } else if (typeof value === 'boolean') {
-                            value = value ? '1' : '0';
-                        }
-                        return encodeURIComponent(key) + '=' + encodeURIComponent(value);
-                    })
-                    .join('&');
+                xhr.open('POST', GOOGLE_SCRIPT_URL);
                 
                 xhr.onload = function() {
-                    if (xhr.status === 200) {
-                        try {
-                            // Пытаемся распарсить JSON ответ
-                            const response = JSON.parse(xhr.responseText);
-                            console.log('✅ Ответ от сервера:', response);
-                            resolve(response);
-                        } catch (e) {
-                            // Если не JSON, считаем успешным
-                            console.log('✅ Ответ (не JSON):', xhr.responseText);
-                            resolve({
-                                success: true,
-                                message: 'Данные получены сервером'
-                            });
-                        }
+                    if (xhr.status === 200 || xhr.status === 0) {
+                        resolve();
                     } else {
-                        reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
+                        reject(new Error(`HTTP ${xhr.status}`));
                     }
                 };
                 
-                xhr.onerror = function() {
-                    reject(new Error('Network error'));
-                };
+                xhr.onerror = reject;
+                xhr.ontimeout = () => reject(new Error('Timeout'));
+                xhr.timeout = 30000;
                 
-                xhr.ontimeout = function() {
-                    reject(new Error('Request timeout'));
-                };
-                
-                xhr.timeout = 30000; // 30 секунд таймаут
-                
-                console.log('📨 Отправка через XHR...');
-                xhr.send(params);
+                xhr.send(formData);
             });
         }
         // === ОПТИМИЗАЦИЯ ПОДПИСИ ===
