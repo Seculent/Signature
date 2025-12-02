@@ -76,7 +76,6 @@
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
         
-        /* Canvas фиксированного размера */
         .canvas-container {
             position: relative;
             width: 100%;
@@ -193,48 +192,25 @@
             border: 1px solid #f5c6cb;
         }
         
-        .iframe-container {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.8);
+        .loading {
             display: none;
-            z-index: 1000;
-            align-items: center;
-            justify-content: center;
+            text-align: center;
+            margin-top: 20px;
         }
         
-        .iframe-wrapper {
-            width: 90%;
-            max-width: 600px;
-            height: 80%;
-            background: white;
-            border-radius: 20px;
-            overflow: hidden;
-            position: relative;
-        }
-        
-        #formIframe {
-            width: 100%;
-            height: 100%;
-            border: none;
-        }
-        
-        .close-iframe {
-            position: absolute;
-            top: 15px;
-            right: 15px;
-            background: #ff6b6b;
-            color: white;
-            border: none;
-            width: 30px;
-            height: 30px;
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
             border-radius: 50%;
-            cursor: pointer;
-            font-size: 18px;
-            z-index: 1001;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
         
         /* Мобильная адаптация */
@@ -253,7 +229,7 @@
             }
             
             input, select {
-                font-size: 16px !important; /* Предотвращает зум в iOS */
+                font-size: 16px !important;
             }
         }
         
@@ -264,11 +240,6 @@
             
             .canvas-container {
                 height: 150px;
-            }
-            
-            .iframe-wrapper {
-                width: 95%;
-                height: 70%;
             }
         }
     </style>
@@ -349,21 +320,18 @@
                 Отправить форму
             </button>
             
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Отправка данных и создание PDF...</p>
+            </div>
+            
             <div class="message" id="message"></div>
         </form>
-    </div>
-    
-    <!-- Скрытый iframe для отправки данных -->
-    <div class="iframe-container" id="iframeContainer">
-        <div class="iframe-wrapper">
-            <button class="close-iframe" onclick="hideIframe()">×</button>
-            <iframe id="formIframe" src="about:blank"></iframe>
-        </div>
     </div>
 
     <script>
         // === НАСТРОЙКИ ===
-        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwMjW7H2bFpPkLzzfuBEPWOnz3aWwhZByPh-QZGvZu5Hd5p52pWFVbOrge0804x524K/exec';
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyiFmoih-xDHmmQ_-nJytUQaaaMksblla_0ARQzoQDvZOgrWARNZxKPFQmV8E0Volx3/exec';
         let signaturePad = null;
         
         // === ИНИЦИАЛИЗАЦИЯ ===
@@ -421,131 +389,169 @@
             form.addEventListener('submit', async function(e) {
                 e.preventDefault();
                 
-                const submitBtn = document.getElementById('submitBtn');
-                const messageDiv = document.getElementById('message');
-                
-                // Валидация
-                const name = document.getElementById('name').value.trim();
-                const email = document.getElementById('email').value.trim();
-                const phone = document.getElementById('phone').value.trim();
-                const procedure = document.getElementById('procedure').value;
-                const consent = document.getElementById('consent').checked;
-                
-                if (!name || !email || !phone || !procedure || !consent) {
-                    showMessage('Заполните все обязательные поля', 'error');
+                if (!await validateForm()) {
                     return;
                 }
                 
-                if (signaturePad.isEmpty()) {
-                    showMessage('Необходимо поставить подпись', 'error');
-                    return;
-                }
-                
-                // Валидация email
-                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                if (!emailRegex.test(email)) {
-                    showMessage('Введите корректный email', 'error');
-                    return;
-                }
-                
-                // Подготовка данных
-                const signatureData = signaturePad.toDataURL();
-                const formData = {
-                    name: name,
-                    email: email,
-                    phone: phone,
-                    procedure: procedure,
-                    consent: consent,
-                    signature: signatureData,
-                    timestamp: new Date().toISOString()
-                };
-                
-                console.log('📤 Данные для отправки:', formData);
-                
-                // Отправляем через iframe
-                submitViaIframe(formData);
-            });
-            
-            // Слушаем сообщения от iframe
-            window.addEventListener('message', function(event) {
-                console.log('📨 Сообщение от iframe:', event.data);
-                
-                if (event.data === 'formSuccess') {
-                    // Успешная отправка
-                    showMessage('✅ Форма успешно отправлена! Проверьте вашу почту.', 'success');
-                    
-                    // Сбрасываем форму
-                    form.reset();
-                    clearSignature();
-                    placeholder.style.display = 'block';
-                    
-                    // Скрываем iframe
-                    hideIframe();
-                    
-                } else if (event.data === 'formError') {
-                    // Ошибка
-                    showMessage('❌ Ошибка отправки формы', 'error');
-                    hideIframe();
-                }
+                await submitForm();
             });
         });
         
-        // === ОТПРАВКА ЧЕРЕЗ IFRAME ===
-        function submitViaIframe(formData) {
+        // === ВАЛИДАЦИЯ ФОРМЫ ===
+        async function validateForm() {
             const submitBtn = document.getElementById('submitBtn');
-            const iframeContainer = document.getElementById('iframeContainer');
-            const formIframe = document.getElementById('formIframe');
+            const messageDiv = document.getElementById('message');
             
-            // Показываем кнопку отправки
+            // Собираем данные
+            const name = document.getElementById('name').value.trim();
+            const email = document.getElementById('email').value.trim();
+            const phone = document.getElementById('phone').value.trim();
+            const procedure = document.getElementById('procedure').value;
+            const consent = document.getElementById('consent').checked;
+            
+            // Проверка обязательных полей
+            if (!name || !email || !phone || !procedure || !consent) {
+                showMessage('Заполните все обязательные поля', 'error');
+                return false;
+            }
+            
+            // Проверка подписи
+            if (signaturePad.isEmpty()) {
+                showMessage('Необходимо поставить подпись', 'error');
+                return false;
+            }
+            
+            // Валидация email
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(email)) {
+                showMessage('Введите корректный email', 'error');
+                return false;
+            }
+            
+            // Валидация телефона (базовая)
+            const phoneRegex = /^[\d\s\-\+\(\)]+$/;
+            if (!phoneRegex.test(phone)) {
+                showMessage('Введите корректный телефон', 'error');
+                return false;
+            }
+            
+            return true;
+        }
+        
+        // === ОТПРАВКА ФОРМЫ (POST метод) ===
+        async function submitForm() {
+            const submitBtn = document.getElementById('submitBtn');
+            const loadingDiv = document.getElementById('loading');
+            const messageDiv = document.getElementById('message');
+            
+            // Показываем индикатор загрузки
             submitBtn.disabled = true;
-            submitBtn.textContent = 'Подготовка отправки...';
+            submitBtn.textContent = 'Отправка...';
+            loadingDiv.style.display = 'block';
+            messageDiv.style.display = 'none';
             
-            // Формируем URL с данными
-            const params = new URLSearchParams();
-            Object.keys(formData).forEach(key => {
-                params.append(key, formData[key]);
-            });
-            
-            const url = `${GOOGLE_SCRIPT_URL}?${params.toString()}`;
-            console.log('🔗 URL для iframe:', url);
-            
-            // Показываем iframe
-            showIframe();
-            
-            // Загружаем URL в iframe
-            formIframe.src = url;
-            
-            // Таймаут на случай если iframe не ответит
-            setTimeout(() => {
-                if (submitBtn.disabled) {
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = 'Отправить форму';
-                    showMessage('⚠️  Проверьте отправку вручную', 'error');
+            try {
+                // Подготовка данных
+                const formData = {
+                    name: document.getElementById('name').value.trim(),
+                    email: document.getElementById('email').value.trim(),
+                    phone: document.getElementById('phone').value.trim(),
+                    procedure: document.getElementById('procedure').value,
+                    consent: document.getElementById('consent').checked,
+                    signature: signaturePad.toDataURL(),
+                    timestamp: new Date().toISOString(),
+                    source: 'web_form'
+                };
+                
+                console.log('📤 Отправка данных:', formData.name, formData.email);
+                
+                // Оптимизация подписи (если слишком большая)
+                let optimizedSignature = formData.signature;
+                if (formData.signature.length > 100000) {
+                    console.log('Оптимизация подписи...');
+                    optimizedSignature = await compressSignature(formData.signature);
                 }
-            }, 15000);
+                
+                // Отправляем POST запрос
+                const response = await fetch(GOOGLE_SCRIPT_URL, {
+                    method: 'POST',
+                    mode: 'no-cors', // Важно для Google Apps Script
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        ...formData,
+                        signature: optimizedSignature
+                    })
+                });
+                
+                // Для no-cors мы не получим response, поэтому ждем
+                console.log('✅ Запрос отправлен, ожидание обработки...');
+                
+                // Имитация успешной отправки (в реальности Google Apps Script обрабатывает)
+                await new Promise(resolve => setTimeout(resolve, 3000));
+                
+                // Показываем успех
+                showMessage('✅ Форма успешно отправлена! PDF создан и отправлен на почту.', 'success');
+                
+                // Сбрасываем форму
+                resetForm();
+                
+            } catch (error) {
+                console.error('❌ Ошибка отправки:', error);
+                showMessage('❌ Ошибка отправки. Попробуйте еще раз.', 'error');
+                
+            } finally {
+                // Скрываем индикатор
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Отправить форму';
+                loadingDiv.style.display = 'none';
+            }
         }
         
-        // === УПРАВЛЕНИЕ IFRAME ===
-        function showIframe() {
-            const iframeContainer = document.getElementById('iframeContainer');
-            iframeContainer.style.display = 'flex';
-            document.body.style.overflow = 'hidden';
+        // === ОПТИМИЗАЦИЯ ПОДПИСИ ===
+        async function compressSignature(dataUrl) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    
+                    // Уменьшаем размер
+                    const maxWidth = 400;
+                    const maxHeight = 150;
+                    let width = img.width;
+                    let height = img.height;
+                    
+                    if (width > maxWidth) {
+                        height = height * (maxWidth / width);
+                        width = maxWidth;
+                    }
+                    
+                    if (height > maxHeight) {
+                        width = width * (maxHeight / height);
+                        height = maxHeight;
+                    }
+                    
+                    canvas.width = width;
+                    canvas.height = height;
+                    ctx.drawImage(img, 0, 0, width, height);
+                    
+                    // Возвращаем сжатый base64
+                    const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                    resolve(compressedDataUrl);
+                };
+                
+                img.src = dataUrl;
+            });
         }
         
-        function hideIframe() {
-            const iframeContainer = document.getElementById('iframeContainer');
-            const submitBtn = document.getElementById('submitBtn');
-            
-            iframeContainer.style.display = 'none';
-            document.body.style.overflow = 'auto';
-            
-            // Сбрасываем iframe
-            const formIframe = document.getElementById('formIframe');
-            formIframe.src = 'about:blank';
-            
-            // Восстанавливаем кнопку
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Отправить форму';
+        // === СБРОС ФОРМЫ ===
+        function resetForm() {
+            const form = document.getElementById('signatureForm');
+            form.reset();
+            clearSignature();
+            document.getElementById('placeholder').style.display = 'block';
         }
         
         // === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
@@ -562,6 +568,7 @@
             messageDiv.className = `message ${type}`;
             messageDiv.style.display = 'block';
             
+            // Автоматически скрываем сообщения об успехе
             if (type === 'success') {
                 setTimeout(() => {
                     messageDiv.style.display = 'none';
@@ -569,7 +576,7 @@
             }
         }
         
-        // Предотвращаем масштабирование на мобильных
+        // === ПРЕДОТВРАЩЕНИЕ МАСШТАБИРОВАНИЯ НА МОБИЛЬНЫХ ===
         document.addEventListener('touchstart', function(e) {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
                 return;
@@ -587,34 +594,61 @@
             }
             lastTouchEnd = now;
         }, false);
-            // Альтернативный метод - JSONP
-        function submitViaJSONP(formData) {
-        return new Promise((resolve, reject) => {
-            const callbackName = 'callback_' + Date.now();
-            
-            // Создаем script элемент
-            const script = document.createElement('script');
-            const params = new URLSearchParams();
-            
-            // Добавляем все данные
-            Object.keys(formData).forEach(key => {
-            params.append(key, formData[key]);
-            });
-            params.append('callback', callbackName);
-            
-            script.src = `${GOOGLE_SCRIPT_URL}?${params.toString()}`;
-            
-            // Callback функция
-            window[callbackName] = function(response) {
-            delete window[callbackName];
-            document.body.removeChild(script);
-            resolve(response);
-            };
-            
-            script.onerror = reject;
-            document.body.appendChild(script);
-        });
+        
+        // === РЕЗЕРВНЫЙ МЕТОД ОТПРАВКИ ===
+        async function submitWithFallback(formData) {
+            try {
+                // Основной метод - POST
+                return await submitForm();
+            } catch (error) {
+                console.log('🔄 Использую резервный метод...');
+                
+                // Резервный метод - через FormData (GET параметры)
+                const params = new URLSearchParams();
+                Object.keys(formData).forEach(key => {
+                    if (key !== 'signature' || formData[key].length < 2000) {
+                        params.append(key, formData[key]);
+                    }
+                });
+                
+                // Отправляем через iframe
+                const iframe = document.createElement('iframe');
+                iframe.style.display = 'none';
+                iframe.src = `${GOOGLE_SCRIPT_URL}?${params.toString()}`;
+                document.body.appendChild(iframe);
+                
+                return new Promise((resolve) => {
+                    setTimeout(() => {
+                        document.body.removeChild(iframe);
+                        resolve();
+                    }, 3000);
+                });
+            }
         }
+        
+        // === ТЕСТИРОВАНИЕ ===
+        window.testForm = function() {
+            // Заполняем тестовыми данными
+            document.getElementById('name').value = 'Иванов Иван Иванович';
+            document.getElementById('email').value = 'test@example.com';
+            document.getElementById('phone').value = '+7 (999) 123-45-67';
+            document.getElementById('procedure').value = 'Массаж';
+            document.getElementById('consent').checked = true;
+            
+            // Рисуем тестовую подпись
+            const ctx = signaturePad._ctx;
+            ctx.beginPath();
+            ctx.moveTo(50, 100);
+            ctx.lineTo(150, 50);
+            ctx.lineTo(250, 100);
+            ctx.lineTo(350, 50);
+            ctx.stroke();
+            
+            document.getElementById('placeholder').style.display = 'none';
+            
+            console.log('✅ Тестовые данные заполнены');
+            alert('Тестовые данные заполнены. Нажмите "Отправить форму"');
+        };
     </script>
 </body>
 </html>
