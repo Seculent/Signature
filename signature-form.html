@@ -352,11 +352,10 @@
                     const formData = {
                         name: name,
                         email: email,
-                        phone: phone,
-                        procedure: procedure,
-                        consent: consent,
-                        signature: signatureData,
-                        timestamp: new Date().toISOString()
+                        phone: document.getElementById('phone').value.trim(),
+                        procedure: document.getElementById('procedure').value,
+                        consent: document.getElementById('consent').checked,
+                        signature: signatureData
                     };
                     
                     // Отправка на Google Apps Script
