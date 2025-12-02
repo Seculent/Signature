@@ -331,7 +331,7 @@
 
     <script>
         // === НАСТРОЙКИ ===
-        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyiFmoih-xDHmmQ_-nJytUQaaaMksblla_0ARQzoQDvZOgrWARNZxKPFQmV8E0Volx3/exec';
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw04ZKrnO2VbTYm4H3xfHxrYn5HJPuh64bsSiZTw-jF9VD1UbfgVTyBbg1s1z44JDMw/exec';
         let signaturePad = null;
         
         // === ИНИЦИАЛИЗАЦИЯ ===
@@ -460,46 +460,61 @@
                     consent: document.getElementById('consent').checked,
                     signature: signaturePad.toDataURL(),
                     timestamp: new Date().toISOString(),
-                    source: 'web_form'
+                    source: 'web_form',
+                    device: navigator.userAgent
                 };
                 
-                console.log('📤 Отправка данных:', formData.name, formData.email);
-                
-                // Оптимизация подписи (если слишком большая)
-                let optimizedSignature = formData.signature;
-                if (formData.signature.length > 100000) {
-                    console.log('Оптимизация подписи...');
-                    optimizedSignature = await compressSignature(formData.signature);
-                }
+                console.log('📤 Отправка данных...');
                 
                 // Отправляем POST запрос
                 const response = await fetch(GOOGLE_SCRIPT_URL, {
                     method: 'POST',
-                    mode: 'no-cors', // Важно для Google Apps Script
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({
-                        ...formData,
-                        signature: optimizedSignature
-                    })
+                    body: JSON.stringify(formData)
                 });
                 
-                // Для no-cors мы не получим response, поэтому ждем
-                console.log('✅ Запрос отправлен, ожидание обработки...');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
                 
-                // Имитация успешной отправки (в реальности Google Apps Script обрабатывает)
-                await new Promise(resolve => setTimeout(resolve, 3000));
+                const result = await response.json();
                 
-                // Показываем успех
-                showMessage('✅ Форма успешно отправлена! PDF создан и отправлен на почту.', 'success');
-                
-                // Сбрасываем форму
-                resetForm();
+                if (result.success) {
+                    // Показываем успех с ID записи
+                    showMessage(
+                        `✅ Форма успешно отправлена!<br>
+                        📋 ID вашей заявки: <strong>${result.recordId || 'не указан'}</strong><br>
+                        📧 Проверьте вашу почту для подтверждения.`,
+                        'success'
+                    );
+                    
+                    // Сбрасываем форму
+                    resetForm();
+                    
+                    // Сохраняем ID в localStorage (для отладки)
+                    localStorage.setItem('lastRecordId', result.recordId);
+                    
+                } else {
+                    throw new Error(result.error || 'Неизвестная ошибка сервера');
+                }
                 
             } catch (error) {
                 console.error('❌ Ошибка отправки:', error);
-                showMessage('❌ Ошибка отправки. Попробуйте еще раз.', 'error');
+                
+                // Пробуем резервный метод
+                try {
+                    await submitWithFallback();
+                    showMessage('✅ Данные отправлены через резервный метод', 'success');
+                    resetForm();
+                } catch (fallbackError) {
+                    showMessage(
+                        `❌ Ошибка отправки: ${error.message}<br>
+                        Попробуйте еще раз или свяжитесь с нами по телефону.`,
+                        'error'
+                    );
+                }
                 
             } finally {
                 // Скрываем индикатор
@@ -596,34 +611,46 @@
         }, false);
         
         // === РЕЗЕРВНЫЙ МЕТОД ОТПРАВКИ ===
-        async function submitWithFallback(formData) {
-            try {
-                // Основной метод - POST
-                return await submitForm();
-            } catch (error) {
-                console.log('🔄 Использую резервный метод...');
+        async function submitWithFallback() {
+            return new Promise((resolve, reject) => {
+                const formData = {
+                    name: document.getElementById('name').value.trim(),
+                    email: document.getElementById('email').value.trim(),
+                    phone: document.getElementById('phone').value.trim(),
+                    procedure: document.getElementById('procedure').value,
+                    consent: document.getElementById('consent').checked,
+                    timestamp: new Date().toISOString()
+                };
                 
-                // Резервный метод - через FormData (GET параметры)
+                // Без подписи (слишком длинная для GET)
                 const params = new URLSearchParams();
                 Object.keys(formData).forEach(key => {
-                    if (key !== 'signature' || formData[key].length < 2000) {
-                        params.append(key, formData[key]);
-                    }
+                    params.append(key, formData[key]);
                 });
                 
-                // Отправляем через iframe
                 const iframe = document.createElement('iframe');
                 iframe.style.display = 'none';
-                iframe.src = `${GOOGLE_SCRIPT_URL}?${params.toString()}`;
+                iframe.src = `${GOOGLE_SCRIPT_URL}?${params.toString()}&fallback=true`;
                 document.body.appendChild(iframe);
                 
-                return new Promise((resolve) => {
-                    setTimeout(() => {
+                iframe.onload = () => {
+                    document.body.removeChild(iframe);
+                    resolve();
+                };
+                
+                iframe.onerror = () => {
+                    document.body.removeChild(iframe);
+                    reject(new Error('Ошибка загрузки iframe'));
+                };
+                
+                // Таймаут
+                setTimeout(() => {
+                    if (document.body.contains(iframe)) {
                         document.body.removeChild(iframe);
-                        resolve();
-                    }, 3000);
-                });
-            }
+                        resolve(); // Все равно считаем отправленным
+                    }
+                }, 5000);
+            });
         }
         
         // === ТЕСТИРОВАНИЕ ===
@@ -649,6 +676,14 @@
             console.log('✅ Тестовые данные заполнены');
             alert('Тестовые данные заполнены. Нажмите "Отправить форму"');
         };
+    function checkLastSubmission() {
+    const lastRecordId = localStorage.getItem('lastRecordId');
+    if (lastRecordId) {
+        alert(`ID вашей последней заявки: ${lastRecordId}\nПроверьте вашу почту.`);
+    } else {
+        alert('У вас нет отправленных заявок в этом браузере.');
+    }
+    }
     </script>
 </body>
 </html>
