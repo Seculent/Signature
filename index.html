@@ -331,7 +331,7 @@
 
     <script>
         // === НАСТРОЙКИ ===
-        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxEZMFZMnL_apGMnATBeqnN4CU8yy86ekltDRekdAQJL1Xkqe-qwyAO_4viT2IOGC8/exec';
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzAMVPrRlki_lNilB8H2T1OdohEw7IIWL6pvyvX1X_bsyzhifSsOUN0CWY3yhtsn3Ns/exec';
         let signaturePad = null;
 
         // === ИНИЦИАЛИЗАЦИЯ ===
@@ -438,106 +438,163 @@
             return true;
         }
         
-        // === ОТПРАВКА ФОРМЫ (исправленная версия для CORS) ===
-        async function submitForm() {
-            const submitBtn = document.getElementById('submitBtn');
-            const loadingDiv = document.getElementById('loading');
-            const messageDiv = document.getElementById('message');
+// === ОБНОВИТЕ ФУНКЦИЮ submitForm ===
+async function submitForm() {
+    const submitBtn = document.getElementById('submitBtn');
+    const loadingDiv = document.getElementById('loading');
+    const messageDiv = document.getElementById('message');
+    
+    // Показываем индикатор загрузки
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Отправка...';
+    loadingDiv.style.display = 'block';
+    messageDiv.style.display = 'none';
+    
+    try {
+        // Подготовка данных
+        const formData = {
+            name: document.getElementById('name').value.trim(),
+            email: document.getElementById('email').value.trim(),
+            phone: document.getElementById('phone').value.trim(),
+            procedure: document.getElementById('procedure').value,
+            consent: document.getElementById('consent').checked,
+            timestamp: new Date().toISOString(),
+            source: 'web_form',
+            signature_type: 'none' // по умолчанию
+        };
+        
+        // Добавляем подпись
+        if (!signaturePad.isEmpty()) {
+            console.log('🖋️ Конвертация подписи...');
             
-            // Показываем индикатор загрузки
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Отправка...';
-            loadingDiv.style.display = 'block';
-            messageDiv.style.display = 'none';
+            // Пробуем получить SVG
+            const svgSignature = convertCanvasToSvg();
             
-            try {
-                // Подготовка данных
-                const formData = {
-                    name: document.getElementById('name').value.trim(),
-                    email: document.getElementById('email').value.trim(),
-                    phone: document.getElementById('phone').value.trim(),
-                    procedure: document.getElementById('procedure').value,
-                    consent: document.getElementById('consent').checked,
-                    signature: await compressSignature(signaturePad.toDataURL()),
-                    timestamp: new Date().toISOString(),
-                    source: 'web_form'
-                };
-                
-                console.log('📤 Подготовка данных для отправки...');
-                
-                // Вариант 1: Используем старый добрый XMLHttpRequest
-                const result = await submitViaXHR(formData);
-                
-                if (result && result.success) {
-                    // Успешная отправка
-                    const recordId = result.recordId || 'N/A';
-                    showMessage(
-                        `✅ Форма успешно отправлена!<br>
-                        📋 ID вашей заявки: <strong>${recordId}</strong><br>
-                        📧 Проверьте вашу почту для подтверждения.`,
-                        'success'
-                    );
-                    
-                    // Сбрасываем форму
-                    resetForm();
-                    
-                    // Сохраняем ID в localStorage
-                    if (recordId !== 'N/A') {
-                        localStorage.setItem('lastRecordId', recordId);
-                        localStorage.setItem('lastSubmission', new Date().toISOString());
-                    }
-                    
-                } else {
-                    throw new Error(result?.error || 'Ошибка сервера');
-                }
-                
-            } catch (error) {
-                console.error('❌ Основной метод не сработал:', error);
-                
-                // Пробуем резервный метод (через форму)
-                try {
-                    console.log('🔄 Пробую резервный метод...');
-                    await submitViaFormData();
-                    showMessage('✅ Данные отправлены через резервный метод', 'success');
-                    resetForm();
-                } catch (fallbackError) {
-                    console.error('❌ Резервный метод тоже не сработал:', fallbackError);
-                    showMessage(
-                        `❌ Ошибка отправки<br>
-                        Попробуйте:<br>
-                        1. Проверить интернет-соединение<br>
-                        2. Попробовать позже<br>
-                        3. Связаться с нами по телефону`,
-                        'error'
-                    );
-                }
-                
-            } finally {
-                // Скрываем индикатор
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Отправить форму';
-                loadingDiv.style.display = 'none';
+            if (svgSignature && svgSignature.length < 50000) {
+                // Используем SVG (лучший вариант)
+                formData.signature = svgSignature;
+                formData.signature_type = 'svg';
+                console.log('✅ SVG подпись, размер:', svgSignature.length, 'символов');
+            } else {
+                // Используем сжатое изображение как запасной вариант
+                formData.signature = await compressSignature(signaturePad.toDataURL());
+                formData.signature_type = 'image';
+                console.log('✅ Изображение подписи, размер:', Math.round(formData.signature.length/1024), 'KB');
             }
         }
-        // === МЕТОД 2: FormData (еще один обход CORS) ===
-        function submitViaFormData() {
-            return new Promise((resolve, reject) => {
-                const form = document.getElementById('signatureForm');
-                const formData = new FormData(form);
-                
-                // Добавляем подпись (если не слишком большая)
-                const signature = signaturePad.toDataURL('image/jpeg', 0.5);
-                if (signature.length < 10000) { // Только если маленькая
-                    formData.append('signature', signature);
+        
+        console.log('📤 Отправка данных...');
+        
+        // Отправляем через XHR
+        const result = await submitViaXHR(formData);
+        
+        if (result && result.success) {
+            showMessage(
+                `✅ Форма успешно отправлена!<br>
+                📋 ID заявки: <strong>${result.recordId || 'N/A'}</strong><br>
+                📧 Проверьте вашу почту для подтверждения.`,
+                'success'
+            );
+            
+            resetForm();
+            
+        } else {
+            throw new Error(result?.error || 'Ошибка сервера');
+        }
+        
+    } catch (error) {
+        console.error('❌ Ошибка отправки:', error);
+        showMessage(
+            `❌ Ошибка отправки<br>
+            <small>${error.message}</small>`,
+            'error'
+        );
+        
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Отправить форму';
+        loadingDiv.style.display = 'none';
+    }
+}
+        
+        // === МЕТОД 1: XMLHttpRequest ===
+// === ОБНОВИТЕ ФУНКЦИЮ submitViaXHR ===
+function submitViaXHR(data) {
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', GOOGLE_SCRIPT_URL);
+        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+        
+        // Преобразуем данные в строку
+        const params = Object.keys(data)
+            .map(key => {
+                let value = data[key];
+                if (typeof value === 'boolean') {
+                    value = value ? '1' : '0';
                 }
+                // SVG может содержать специальные символы, нужно кодировать
+                return encodeURIComponent(key) + '=' + encodeURIComponent(value);
+            })
+            .join('&');
+        
+        console.log('📨 Отправка, тип подписи:', data.signature_type);
+        
+        xhr.onload = function() {
+            console.log('📨 Статус:', xhr.status);
+            
+            if (xhr.status >= 200 && xhr.status < 300) {
+                try {
+                    const response = JSON.parse(xhr.responseText);
+                    resolve(response);
+                } catch (e) {
+                    resolve({ success: true, message: 'Данные отправлены' });
+                }
+            } else {
+                reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
+            }
+        };
+        
+        xhr.onerror = reject;
+        xhr.timeout = 15000;
+        xhr.ontimeout = () => reject(new Error('Таймаут'));
+        
+        xhr.send(params);
+    });
+}
+        
+        // === МЕТОД 2: FormData ===
+        function submitViaFormData(data) {
+            return new Promise((resolve, reject) => {
+                const formData = new FormData();
                 
-                formData.append('timestamp', new Date().toISOString());
-                formData.append('consent', document.getElementById('consent').checked ? '1' : '0');
+                // Добавляем основные поля
+                formData.append('name', data.name);
+                formData.append('email', data.email);
+                formData.append('phone', data.phone);
+                formData.append('procedure', data.procedure);
+                formData.append('consent', data.consent ? '1' : '0');
+                formData.append('timestamp', data.timestamp);
+                formData.append('source', 'formdata');
+                
+                // Подпись (если не слишком большая)
+                if (data.signature && data.signature.length < 100000) {
+                    // Конвертируем base64 в Blob
+                    const byteString = atob(data.signature.split(',')[1]);
+                    const mimeString = data.signature.split(',')[0].split(':')[1].split(';')[0];
+                    const ab = new ArrayBuffer(byteString.length);
+                    const ia = new Uint8Array(ab);
+                    for (let i = 0; i < byteString.length; i++) {
+                        ia[i] = byteString.charCodeAt(i);
+                    }
+                    const blob = new Blob([ab], {type: mimeString});
+                    formData.append('signature', blob, 'signature.png');
+                }
                 
                 const xhr = new XMLHttpRequest();
                 xhr.open('POST', GOOGLE_SCRIPT_URL);
                 
                 xhr.onload = function() {
+                    console.log('📨 FormData статус:', xhr.status);
                     if (xhr.status === 200 || xhr.status === 0) {
                         resolve();
                     } else {
@@ -549,14 +606,49 @@
                 xhr.ontimeout = () => reject(new Error('Timeout'));
                 xhr.timeout = 30000;
                 
+                console.log('📨 Отправка через FormData...');
                 xhr.send(formData);
             });
         }
+        
+        // === МЕТОД 3: GET запрос ===
+        function submitViaGET(data) {
+            return new Promise((resolve, reject) => {
+                // Только основные данные (без подписи - слишком длинная)
+                const params = new URLSearchParams();
+                params.append('name', data.name);
+                params.append('email', data.email);
+                params.append('phone', data.phone);
+                params.append('procedure', data.procedure);
+                params.append('consent', data.consent ? '1' : '0');
+                params.append('timestamp', data.timestamp);
+                params.append('method', 'get');
+                
+                const xhr = new XMLHttpRequest();
+                xhr.open('GET', `${GOOGLE_SCRIPT_URL}?${params.toString()}`);
+                
+                xhr.onload = function() {
+                    if (xhr.status === 200 || xhr.status === 0) {
+                        resolve();
+                    } else {
+                        reject(new Error(`HTTP ${xhr.status}`));
+                    }
+                };
+                
+                xhr.onerror = reject;
+                xhr.timeout = 15000;
+                xhr.ontimeout = () => reject(new Error('GET timeout'));
+                
+                console.log('📨 Отправка через GET...');
+                xhr.send();
+            });
+        }
+        
         // === ОПТИМИЗАЦИЯ ПОДПИСИ ===
         async function compressSignature(dataUrl) {
             return new Promise((resolve) => {
                 // Если подпись маленькая, возвращаем как есть
-                if (dataUrl.length < 50000) {
+                if (dataUrl.length < 30000) {
                     resolve(dataUrl);
                     return;
                 }
@@ -569,8 +661,8 @@
                     // Уменьшаем размер
                     let width = img.width;
                     let height = img.height;
-                    const maxWidth = 400;
-                    const maxHeight = 200;
+                    const maxWidth = 300;
+                    const maxHeight = 100;
                     
                     if (width > maxWidth) {
                         height = Math.round((height * maxWidth) / width);
@@ -593,7 +685,7 @@
                     ctx.drawImage(img, 0, 0, width, height);
                     
                     // Конвертируем в JPEG для уменьшения размера
-                    const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                    const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.5);
                     console.log(`📉 Сжатие подписи: ${Math.round(dataUrl.length/1024)}KB → ${Math.round(compressedDataUrl.length/1024)}KB`);
                     
                     resolve(compressedDataUrl);
@@ -608,24 +700,19 @@
             });
         }
         
-        // === СБРОС ФОРМЫ ===
-        function resetForm() {
-            const form = document.getElementById('signatureForm');
-            form.reset();
-            clearSignature();
-            document.getElementById('placeholder').style.display = 'block';
-        }
-        
         // === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
         function clearSignature() {
             if (signaturePad) {
                 signaturePad.clear();
-                document.getElementById('placeholder').style.display = 'block';
+                const placeholder = document.getElementById('placeholder');
+                if (placeholder) placeholder.style.display = 'block';
             }
         }
 
         function showMessage(text, type) {
             const messageDiv = document.getElementById('message');
+            if (!messageDiv) return;
+            
             messageDiv.innerHTML = text;
             messageDiv.className = `message ${type}`;
             messageDiv.style.display = 'block';
@@ -639,71 +726,8 @@
 
         function resetForm() {
             const form = document.getElementById('signatureForm');
-            form.reset();
+            if (form) form.reset();
             clearSignature();
-            document.getElementById('placeholder').style.display = 'block';
-        }
-        
-        // === ПРЕДОТВРАЩЕНИЕ МАСШТАБИРОВАНИЯ НА МОБИЛЬНЫХ ===
-        document.addEventListener('touchstart', function(e) {
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
-                return;
-            }
-            if (e.touches.length > 1) {
-                e.preventDefault();
-            }
-        }, { passive: false });
-        
-        let lastTouchEnd = 0;
-        document.addEventListener('touchend', function(e) {
-            const now = Date.now();
-            if (now - lastTouchEnd <= 300) {
-                e.preventDefault();
-            }
-            lastTouchEnd = now;
-        }, false);
-        
-        // === РЕЗЕРВНЫЙ МЕТОД ОТПРАВКИ ===
-        async function submitWithFallback() {
-            return new Promise((resolve, reject) => {
-                const formData = {
-                    name: document.getElementById('name').value.trim(),
-                    email: document.getElementById('email').value.trim(),
-                    phone: document.getElementById('phone').value.trim(),
-                    procedure: document.getElementById('procedure').value,
-                    consent: document.getElementById('consent').checked,
-                    timestamp: new Date().toISOString()
-                };
-                
-                // Без подписи (слишком длинная для GET)
-                const params = new URLSearchParams();
-                Object.keys(formData).forEach(key => {
-                    params.append(key, formData[key]);
-                });
-                
-                const iframe = document.createElement('iframe');
-                iframe.style.display = 'none';
-                iframe.src = `${GOOGLE_SCRIPT_URL}?${params.toString()}&fallback=true`;
-                document.body.appendChild(iframe);
-                
-                iframe.onload = () => {
-                    document.body.removeChild(iframe);
-                    resolve();
-                };
-                
-                iframe.onerror = () => {
-                    document.body.removeChild(iframe);
-                    reject(new Error('Ошибка загрузки iframe'));
-                };
-                
-                // Таймаут
-                setTimeout(() => {
-                    if (document.body.contains(iframe)) {
-                        document.body.removeChild(iframe);
-                        resolve(); // Все равно считаем отправленным
-                    }
-                }, 5000);
-            });
         }
         
         // === ТЕСТИРОВАНИЕ ===
@@ -716,14 +740,17 @@
             document.getElementById('consent').checked = true;
             
             // Рисуем тестовую подпись
-            const ctx = signaturePad._ctx;
-            ctx.beginPath();
-            ctx.moveTo(50, 100);
-            ctx.bezierCurveTo(100, 50, 200, 150, 350, 100);
-            ctx.stroke();
-            ctx.closePath();
-            
-            document.getElementById('placeholder').style.display = 'none';
+            if (signaturePad && signaturePad._ctx) {
+                const ctx = signaturePad._ctx;
+                ctx.beginPath();
+                ctx.moveTo(50, 100);
+                ctx.bezierCurveTo(100, 50, 200, 150, 350, 100);
+                ctx.stroke();
+                ctx.closePath();
+                
+                const placeholder = document.getElementById('placeholder');
+                if (placeholder) placeholder.style.display = 'none';
+            }
             
             console.log('🧪 Тестирование отправки...');
             
@@ -765,14 +792,113 @@
                 }
             }, 5000);
         };
+        
         function checkLastSubmission() {
-        const lastRecordId = localStorage.getItem('lastRecordId');
-        if (lastRecordId) {
-            alert(`ID вашей последней заявки: ${lastRecordId}\nПроверьте вашу почту.`);
-        } else {
-            alert('У вас нет отправленных заявок в этом браузере.');
+            const lastRecordId = localStorage.getItem('lastRecordId');
+            if (lastRecordId) {
+                alert(`ID вашей последней заявки: ${lastRecordId}\nПроверьте вашу почту.`);
+            } else {
+                alert('У вас нет отправленных заявок в этом браузере.');
+            }
         }
+        
+        // Добавляем кнопки для тестирования
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.getElementById('signatureForm');
+            if (form) {
+                const testButtons = document.createElement('div');
+                testButtons.style.textAlign = 'center';
+                testButtons.style.marginTop = '15px';
+                testButtons.innerHTML = `
+                    <button onclick="testSubmission()" style="background: #6c757d; color: white; padding: 8px 15px; border: none; border-radius: 5px; cursor: pointer; margin: 5px;">
+                        🧪 Тест отправки
+                    </button>
+                    <button onclick="checkScriptConnection()" style="background: #17a2b8; color: white; padding: 8px 15px; border: none; border-radius: 5px; cursor: pointer; margin: 5px;">
+                        🔍 Проверить соединение
+                    </button>
+                `;
+                form.appendChild(testButtons);
+            }
+        });
+        // === КОНВЕРТАЦИЯ CANVAS В SVG (Добавьте эту функцию) ===
+function convertCanvasToSvg() {
+    if (!signaturePad || signaturePad.isEmpty()) {
+        return null;
+    }
+    
+    try {
+        // Получаем данные точек из SignaturePad
+        const data = signaturePad.toData();
+        if (!data || data.length === 0) {
+            console.log('❌ Нет данных подписи');
+            return null;
         }
+        
+        // Определяем границы подписи
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        
+        data.forEach(stroke => {
+            stroke.forEach(point => {
+                if (point.x < minX) minX = point.x;
+                if (point.y < minY) minY = point.y;
+                if (point.x > maxX) maxX = point.x;
+                if (point.y > maxY) maxY = point.y;
+            });
+        });
+        
+        // Добавляем отступы
+        const padding = 10;
+        const width = Math.max(400, (maxX - minX) + padding * 2);
+        const height = Math.max(150, (maxY - minY) + padding * 2);
+        
+        // Создаем SVG пути
+        let svgPaths = '';
+        
+        data.forEach(stroke => {
+            if (stroke.length > 0) {
+                let path = `M ${stroke[0].x - minX + padding} ${stroke[0].y - minY + padding}`;
+                
+                for (let i = 1; i < stroke.length; i++) {
+                    // Используем кубические кривые Безье для плавности
+                    if (i < stroke.length - 1) {
+                        const cp1x = (stroke[i].x + stroke[i+1].x) / 2;
+                        const cp1y = (stroke[i].y + stroke[i+1].y) / 2;
+                        path += ` Q ${stroke[i].x - minX + padding} ${stroke[i].y - minY + padding} ${cp1x - minX + padding} ${cp1y - minY + padding}`;
+                        i++;
+                    } else {
+                        path += ` L ${stroke[i].x - minX + padding} ${stroke[i].y - minY + padding}`;
+                    }
+                }
+                
+                // Определяем толщину линии
+                const strokeWidth = stroke[0].pressure ? Math.max(1, stroke[0].pressure * 3) : 2;
+                
+                svgPaths += `<path d="${path}" fill="none" stroke="black" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round"/>`;
+            }
+        });
+        
+        // Создаем SVG
+        const svg = `
+<svg xmlns="http://www.w3.org/2000/svg" 
+     width="${width}" 
+     height="${height}" 
+     viewBox="0 0 ${width} ${height}">
+    <rect width="100%" height="100%" fill="white"/>
+    <g transform="translate(0, 0)">
+        ${svgPaths}
+    </g>
+</svg>`;
+        
+        console.log('✅ SVG создан, размер:', svg.length, 'символов');
+        return svg;
+        
+    } catch (error) {
+        console.error('❌ Ошибка конвертации в SVG:', error);
+        return null;
+    }
+}
+
+
     </script>
 </body>
 </html>
