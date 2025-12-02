@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Форма с подписью</title>
+    <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.0.0/dist/signature_pad.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            width: 100%;
+            max-width: 500px;
+            padding: 30px;
+            animation: slideIn 0.5s ease;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+            font-weight: 600;
+        }
+        
+        .form-group {
+            margin-bottom: 25px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+        }
+        
+        input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+        
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .signature-section {
+            margin: 30px 0;
+        }
+        
+        .signature-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .clear-btn {
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+        
+        .clear-btn:hover {
+            background: #ff5252;
+        }
+        
+        #signature-pad {
+            border: 2px dashed #ccc;
+            border-radius: 10px;
+            cursor: crosshair;
+            background: #f9f9f9;
+            touch-action: none;
+        }
+        
+        .canvas-container {
+            position: relative;
+        }
+        
+        .canvas-placeholder {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #aaa;
+            font-size: 14px;
+            pointer-events: none;
+        }
+        
+        .submit-btn {
+            width: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.3s, box-shadow 0.3s;
+            margin-top: 20px;
+        }
+        
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .submit-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .message {
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            text-align: center;
+            font-weight: 500;
+            display: none;
+        }
+        
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        @media (max-width: 600px) {
+            .container {
+                padding: 20px;
+            }
+            
+            h1 {
+                font-size: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📝 Форма с электронной подписью</h1>
+        
+        <form id="signatureForm">
+            <div class="form-group">
+                <label for="name">ФИО *</label>
+                <input type="text" id="name" name="name" required placeholder="Введите ваше полное имя">
+            </div>
+            
+            <div class="form-group">
+                <label for="email">Email *</label>
+                <input type="email" id="email" name="email" required placeholder="example@mail.com">
+            </div>
+            
+            <div class="signature-section">
+                <div class="signature-label">
+                    <label for="signature-pad">Подпись *</label>
+                    <button type="button" class="clear-btn" onclick="clearSignature()">Очистить</button>
+                </div>
+                
+                <div class="canvas-container">
+                    <canvas id="signature-pad" width="440" height="200"></canvas>
+                    <div class="canvas-placeholder" id="placeholder">
+                        Распишитесь здесь (пальцем или мышью)
+                    </div>
+                </div>
+                <small style="color: #777; display: block; margin-top: 5px;">
+                    Нажмите и проведите пальцем/мышью для создания подписи
+                </small>
+            </div>
+            
+            <button type="submit" class="submit-btn" id="submitBtn">
+                Отправить форму
+            </button>
+            
+            <div class="message" id="message"></div>
+        </form>
+    </div>
+
+    <script>
+        // Инициализация
+        let signaturePad = null;
+        const GOOGLE_SCRIPT_URL = 'ВСТАВЬТЕ_СЮДА_ВАШ_URL_ВЕБ_ПРИЛОЖЕНИЯ'; // Замените на ваш URL
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            // Инициализируем поле для подписи
+            const canvas = document.getElementById('signature-pad');
+            const placeholder = document.getElementById('placeholder');
+            
+            signaturePad = new SignaturePad(canvas, {
+                backgroundColor: 'rgb(255, 255, 255)',
+                penColor: 'rgb(0, 0, 0)',
+                minWidth: 1,
+                maxWidth: 3,
+                throttle: 16
+            });
+            
+            // Адаптируем размер canvas к экрану
+            function resizeCanvas() {
+                const ratio = Math.max(window.devicePixelRatio || 1, 1);
+                canvas.width = canvas.offsetWidth * ratio;
+                canvas.height = canvas.offsetHeight * ratio;
+                canvas.getContext("2d").scale(ratio, ratio);
+                signaturePad.clear();
+            }
+            
+            window.addEventListener("resize", resizeCanvas);
+            resizeCanvas();
+            
+            // Скрываем плейсхолдер при рисовании
+            canvas.addEventListener('mousedown', hidePlaceholder);
+            canvas.addEventListener('touchstart', hidePlaceholder, { passive: true });
+            
+            function hidePlaceholder() {
+                placeholder.style.display = 'none';
+            }
+            
+            // Показываем плейсхолдер, если поле пустое
+            signaturePad.addEventListener('endStroke', function() {
+                if (signaturePad.isEmpty()) {
+                    placeholder.style.display = 'block';
+                }
+            });
+            
+            // Обработка формы
+            const form = document.getElementById('signatureForm');
+            form.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                const submitBtn = document.getElementById('submitBtn');
+                const messageDiv = document.getElementById('message');
+                
+                // Валидация
+                const name = document.getElementById('name').value.trim();
+                const email = document.getElementById('email').value.trim();
+                
+                if (!name || !email) {
+                    showMessage('Заполните все обязательные поля', 'error');
+                    return;
+                }
+                
+                if (signaturePad.isEmpty()) {
+                    showMessage('Необходимо поставить подпись', 'error');
+                    return;
+                }
+                
+                // Валидация email
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (!emailRegex.test(email)) {
+                    showMessage('Введите корректный email', 'error');
+                    return;
+                }
+                
+                // Отключаем кнопку
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Отправка...';
+                
+                try {
+                    // Конвертируем подпись в base64
+                    const signatureData = signaturePad.toDataURL();
+                    
+                    // Подготовка данных
+                    const formData = {
+                        name: name,
+                        email: email,
+                        signature: signatureData
+                    };
+                    
+                    // Отправка на Google Apps Script
+                    const response = await fetch(GOOGLE_SCRIPT_URL, {
+                        method: 'POST',
+                        mode: 'no-cors', // Для обхода CORS
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(formData)
+                    });
+                    
+                    // В режиме no-cors мы не можем прочитать ответ,
+                    // поэтому считаем успешным, если нет ошибок сети
+                    showMessage('Форма успешно отправлена!', 'success');
+                    
+                    // Сброс формы
+                    form.reset();
+                    clearSignature();
+                    placeholder.style.display = 'block';
+                    
+                } catch (error) {
+                    console.error('Ошибка:', error);
+                    showMessage('Ошибка при отправке формы. Попробуйте еще раз.', 'error');
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Отправить форму';
+                }
+            });
+        });
+        
+        // Функция очистки подписи
+        function clearSignature() {
+            signaturePad.clear();
+            document.getElementById('placeholder').style.display = 'block';
+        }
+        
+        // Функция показа сообщений
+        function showMessage(text, type) {
+            const messageDiv = document.getElementById('message');
+            messageDiv.textContent = text;
+            messageDiv.className = `message ${type}`;
+            messageDiv.style.display = 'block';
+            
+            // Автоскрытие для успешных сообщений
+            if (type === 'success') {
+                setTimeout(() => {
+                    messageDiv.style.display = 'none';
+                }, 5000);
+            }
+        }
+    </script>
+</body>
+</html>
