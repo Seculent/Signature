@@ -213,7 +213,46 @@
                     Нажмите и проведите пальцем/мышью для создания подписи
                 </small>
             </div>
-            
+            <div class="form-group">
+                <label for="phone">Телефон *</label>
+                <input type="tel" id="phone" name="phone" required placeholder="+7 (999) 123-45-67">
+            </div>
+
+            <div class="form-group">
+                <label for="procedure">Процедура *</label>
+                <select id="procedure" name="procedure" required>
+                    <option value="">Выберите процедуру</option>
+                    <option value="Чистка лица">Чистка лица</option>
+                    <option value="Массаж">Массаж</option>
+                    <option value="Пилинг">Пилинг</option>
+                    <option value="Маникюр">Маникюр</option>
+                    <option value="Педикюр">Педикюр</option>
+                    <option value="Наращивание ресниц">Наращивание ресниц</option>
+                    <option value="Депиляция">Депиляция</option>
+                    <option value="Коррекция бровей">Коррекция бровей</option>
+                </select>
+            </div>
+            <div class="consent-box" style="background: #f9f9f9; padding: 20px; border-radius: 10px; margin: 20px 0; border: 1px solid #ddd;">
+                <h3 style="color: #333; margin-top: 0;">📋 Важное соглашение</h3>
+                
+                <div style="max-height: 200px; overflow-y: auto; padding: 15px; background: white; border-radius: 5px; margin-bottom: 15px;">
+                    <p><strong>Направляя настоящую форму, я подтверждаю, что:</strong></p>
+                    <ol style="margin: 10px 0; padding-left: 20px;">
+                        <li>Ознакомился(лась) в полном объеме с порядком проведения процедуры, перечнем используемых материалов и методиками работ;</li>
+                        <li>Подтверждаю свое согласие с Политикой конфиденциальности салона;</li>
+                        <li>Подтверждаю, что предлагаемые работы и применяемые материалы не имеют медицинских противопоказаний в моем случае;</li>
+                        <li>Осознаю возможные последствия проведения процедуры и принимаю полную ответственность за свое решение.</li>
+                    </ol>
+                    <p style="font-style: italic; color: #666; margin-top: 15px;">
+                        *Подписание настоящего соглашения означает ваше полное принятие всех изложенных условий.
+                    </p>
+                </div>
+                
+                <label style="display: flex; align-items: flex-start; cursor: pointer;">
+                    <input type="checkbox" id="consent" required style="margin-right: 10px; margin-top: 3px;">
+                    <span>Я подтверждаю, что ознакомлен(а) со всеми пунктами соглашения и принимаю их</span>
+                </label>
+            </div>
             <button type="submit" class="submit-btn" id="submitBtn">
                 Отправить форму
             </button>
@@ -225,7 +264,7 @@
     <script>
         // Инициализация
         let signaturePad = null;
-        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwfDVZoSH5KiE3FMY1IjH7obXBjT9HohzbFL6KRBJepyQhMrlX5F-KmK8MoItyCuJ7o/exec'; // Замените на ваш URL
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw9U90SToLMLtDZAIyphzsc-nh52jl9DPyEkiCKuCKA87w0zZmh7AlBr_ruXngoyB3f/exec'; // Замените на ваш URL
         
         document.addEventListener('DOMContentLoaded', function() {
             // Инициализируем поле для подписи
