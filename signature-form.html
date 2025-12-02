@@ -264,7 +264,7 @@
     <script>
         // Инициализация
         let signaturePad = null;
-        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw9U90SToLMLtDZAIyphzsc-nh52jl9DPyEkiCKuCKA87w0zZmh7AlBr_ruXngoyB3f/exec'; // Замените на ваш URL
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwJ1GNMguA24-aghRH1lup97_XdbyRaLISMcSaqZ-3EadlNSb7nbF1zawkYgK7X1UjE/exec'; // Замените на ваш URL
         
         document.addEventListener('DOMContentLoaded', function() {
             // Инициализируем поле для подписи
@@ -343,11 +343,20 @@
                     // Конвертируем подпись в base64
                     const signatureData = signaturePad.toDataURL();
                     
+                    // Получаем дополнительные поля
+                    const phone = document.getElementById('phone').value.trim();
+                    const procedure = document.getElementById('procedure').value;
+                    const consent = document.getElementById('consent').checked;
+
                     // Подготовка данных
                     const formData = {
                         name: name,
                         email: email,
-                        signature: signatureData
+                        phone: phone,
+                        procedure: procedure,
+                        consent: consent,
+                        signature: signatureData,
+                        timestamp: new Date().toISOString()
                     };
                     
                     // Отправка на Google Apps Script
