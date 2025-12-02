@@ -331,9 +331,9 @@
 
     <script>
         // === НАСТРОЙКИ ===
-        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw04ZKrnO2VbTYm4H3xfHxrYn5HJPuh64bsSiZTw-jF9VD1UbfgVTyBbg1s1z44JDMw/exec';
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxEZMFZMnL_apGMnATBeqnN4CU8yy86ekltDRekdAQJL1Xkqe-qwyAO_4viT2IOGC8/exec';
         let signaturePad = null;
-        
+
         // === ИНИЦИАЛИЗАЦИЯ ===
         document.addEventListener('DOMContentLoaded', function() {
             // Инициализация canvas
@@ -438,7 +438,7 @@
             return true;
         }
         
-        // === ОТПРАВКА ФОРМЫ (POST метод) ===
+        // === ОТПРАВКА ФОРМЫ (исправленная версия для CORS) ===
         async function submitForm() {
             const submitBtn = document.getElementById('submitBtn');
             const loadingDiv = document.getElementById('loading');
@@ -458,34 +458,22 @@
                     phone: document.getElementById('phone').value.trim(),
                     procedure: document.getElementById('procedure').value,
                     consent: document.getElementById('consent').checked,
-                    signature: signaturePad.toDataURL(),
+                    signature: await compressSignature(signaturePad.toDataURL()),
                     timestamp: new Date().toISOString(),
-                    source: 'web_form',
-                    device: navigator.userAgent
+                    source: 'web_form'
                 };
                 
-                console.log('📤 Отправка данных...');
+                console.log('📤 Подготовка данных для отправки...');
                 
-                // Отправляем POST запрос
-                const response = await fetch(GOOGLE_SCRIPT_URL, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(formData)
-                });
+                // Вариант 1: Используем старый добрый XMLHttpRequest
+                const result = await submitViaXHR(formData);
                 
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    // Показываем успех с ID записи
+                if (result && result.success) {
+                    // Успешная отправка
+                    const recordId = result.recordId || 'N/A';
                     showMessage(
                         `✅ Форма успешно отправлена!<br>
-                        📋 ID вашей заявки: <strong>${result.recordId || 'не указан'}</strong><br>
+                        📋 ID вашей заявки: <strong>${recordId}</strong><br>
                         📧 Проверьте вашу почту для подтверждения.`,
                         'success'
                     );
@@ -493,25 +481,33 @@
                     // Сбрасываем форму
                     resetForm();
                     
-                    // Сохраняем ID в localStorage (для отладки)
-                    localStorage.setItem('lastRecordId', result.recordId);
+                    // Сохраняем ID в localStorage
+                    if (recordId !== 'N/A') {
+                        localStorage.setItem('lastRecordId', recordId);
+                        localStorage.setItem('lastSubmission', new Date().toISOString());
+                    }
                     
                 } else {
-                    throw new Error(result.error || 'Неизвестная ошибка сервера');
+                    throw new Error(result?.error || 'Ошибка сервера');
                 }
                 
             } catch (error) {
-                console.error('❌ Ошибка отправки:', error);
+                console.error('❌ Основной метод не сработал:', error);
                 
-                // Пробуем резервный метод
+                // Пробуем резервный метод (через форму)
                 try {
-                    await submitWithFallback();
+                    console.log('🔄 Пробую резервный метод...');
+                    await submitViaFormData();
                     showMessage('✅ Данные отправлены через резервный метод', 'success');
                     resetForm();
                 } catch (fallbackError) {
+                    console.error('❌ Резервный метод тоже не сработал:', fallbackError);
                     showMessage(
-                        `❌ Ошибка отправки: ${error.message}<br>
-                        Попробуйте еще раз или свяжитесь с нами по телефону.`,
+                        `❌ Ошибка отправки<br>
+                        Попробуйте:<br>
+                        1. Проверить интернет-соединение<br>
+                        2. Попробовать позже<br>
+                        3. Связаться с нами по телефону`,
                         'error'
                     );
                 }
@@ -523,38 +519,114 @@
                 loadingDiv.style.display = 'none';
             }
         }
-        
+        // === МЕТОД 1: XMLHttpRequest (обходит CORS) ===
+        function submitViaXHR(data) {
+            return new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                const url = GOOGLE_SCRIPT_URL;
+                
+                // Для POST запросов к Google Apps Script
+                xhr.open('POST', url);
+                xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+                
+                // Преобразуем данные в строку
+                const params = Object.keys(data)
+                    .map(key => {
+                        // Кодируем значение, особенно подпись
+                        let value = data[key];
+                        if (typeof value === 'object') {
+                            value = JSON.stringify(value);
+                        } else if (typeof value === 'boolean') {
+                            value = value ? '1' : '0';
+                        }
+                        return encodeURIComponent(key) + '=' + encodeURIComponent(value);
+                    })
+                    .join('&');
+                
+                xhr.onload = function() {
+                    if (xhr.status === 200) {
+                        try {
+                            // Пытаемся распарсить JSON ответ
+                            const response = JSON.parse(xhr.responseText);
+                            console.log('✅ Ответ от сервера:', response);
+                            resolve(response);
+                        } catch (e) {
+                            // Если не JSON, считаем успешным
+                            console.log('✅ Ответ (не JSON):', xhr.responseText);
+                            resolve({
+                                success: true,
+                                message: 'Данные получены сервером'
+                            });
+                        }
+                    } else {
+                        reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
+                    }
+                };
+                
+                xhr.onerror = function() {
+                    reject(new Error('Network error'));
+                };
+                
+                xhr.ontimeout = function() {
+                    reject(new Error('Request timeout'));
+                };
+                
+                xhr.timeout = 30000; // 30 секунд таймаут
+                
+                console.log('📨 Отправка через XHR...');
+                xhr.send(params);
+            });
+        }
         // === ОПТИМИЗАЦИЯ ПОДПИСИ ===
         async function compressSignature(dataUrl) {
             return new Promise((resolve) => {
+                // Если подпись маленькая, возвращаем как есть
+                if (dataUrl.length < 50000) {
+                    resolve(dataUrl);
+                    return;
+                }
+                
                 const img = new Image();
                 img.onload = function() {
                     const canvas = document.createElement('canvas');
                     const ctx = canvas.getContext('2d');
                     
                     // Уменьшаем размер
-                    const maxWidth = 400;
-                    const maxHeight = 150;
                     let width = img.width;
                     let height = img.height;
+                    const maxWidth = 400;
+                    const maxHeight = 200;
                     
                     if (width > maxWidth) {
-                        height = height * (maxWidth / width);
+                        height = Math.round((height * maxWidth) / width);
                         width = maxWidth;
                     }
                     
                     if (height > maxHeight) {
-                        width = width * (maxHeight / height);
+                        width = Math.round((width * maxHeight) / height);
                         height = maxHeight;
                     }
                     
                     canvas.width = width;
                     canvas.height = height;
+                    
+                    // Белый фон
+                    ctx.fillStyle = 'white';
+                    ctx.fillRect(0, 0, width, height);
+                    
+                    // Рисуем подпись
                     ctx.drawImage(img, 0, 0, width, height);
                     
-                    // Возвращаем сжатый base64
+                    // Конвертируем в JPEG для уменьшения размера
                     const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                    console.log(`📉 Сжатие подписи: ${Math.round(dataUrl.length/1024)}KB → ${Math.round(compressedDataUrl.length/1024)}KB`);
+                    
                     resolve(compressedDataUrl);
+                };
+                
+                img.onerror = function() {
+                    console.warn('Не удалось сжать подпись, использую оригинал');
+                    resolve(dataUrl);
                 };
                 
                 img.src = dataUrl;
@@ -576,19 +648,25 @@
                 document.getElementById('placeholder').style.display = 'block';
             }
         }
-        
+
         function showMessage(text, type) {
             const messageDiv = document.getElementById('message');
-            messageDiv.textContent = text;
+            messageDiv.innerHTML = text;
             messageDiv.className = `message ${type}`;
             messageDiv.style.display = 'block';
             
-            // Автоматически скрываем сообщения об успехе
             if (type === 'success') {
                 setTimeout(() => {
                     messageDiv.style.display = 'none';
-                }, 5000);
+                }, 8000);
             }
+        }
+
+        function resetForm() {
+            const form = document.getElementById('signatureForm');
+            form.reset();
+            clearSignature();
+            document.getElementById('placeholder').style.display = 'block';
         }
         
         // === ПРЕДОТВРАЩЕНИЕ МАСШТАБИРОВАНИЯ НА МОБИЛЬНЫХ ===
@@ -654,11 +732,11 @@
         }
         
         // === ТЕСТИРОВАНИЕ ===
-        window.testForm = function() {
+        window.testSubmission = async function() {
             // Заполняем тестовыми данными
-            document.getElementById('name').value = 'Иванов Иван Иванович';
+            document.getElementById('name').value = 'Тестовый Клиент';
             document.getElementById('email').value = 'test@example.com';
-            document.getElementById('phone').value = '+7 (999) 123-45-67';
+            document.getElementById('phone').value = '+7 (999) 999-99-99';
             document.getElementById('procedure').value = 'Массаж';
             document.getElementById('consent').checked = true;
             
@@ -666,24 +744,60 @@
             const ctx = signaturePad._ctx;
             ctx.beginPath();
             ctx.moveTo(50, 100);
-            ctx.lineTo(150, 50);
-            ctx.lineTo(250, 100);
-            ctx.lineTo(350, 50);
+            ctx.bezierCurveTo(100, 50, 200, 150, 350, 100);
             ctx.stroke();
+            ctx.closePath();
             
             document.getElementById('placeholder').style.display = 'none';
             
-            console.log('✅ Тестовые данные заполнены');
-            alert('Тестовые данные заполнены. Нажмите "Отправить форму"');
+            console.log('🧪 Тестирование отправки...');
+            
+            try {
+                await submitForm();
+                console.log('✅ Тест запущен');
+            } catch (error) {
+                console.error('❌ Ошибка теста:', error);
+                alert('Ошибка теста: ' + error.message);
+            }
         };
-    function checkLastSubmission() {
-    const lastRecordId = localStorage.getItem('lastRecordId');
-    if (lastRecordId) {
-        alert(`ID вашей последней заявки: ${lastRecordId}\nПроверьте вашу почту.`);
-    } else {
-        alert('У вас нет отправленных заявок в этом браузере.');
-    }
-    }
+
+        // Проверка соединения со скриптом
+        window.checkScriptConnection = function() {
+            console.log('🔍 Проверка соединения со скриптом...');
+            
+            const testUrl = GOOGLE_SCRIPT_URL + '?test=1&callback=testCallback';
+            const script = document.createElement('script');
+            
+            window.testCallback = function(response) {
+                console.log('✅ Скрипт доступен:', response);
+                alert('Скрипт доступен!');
+                delete window.testCallback;
+            };
+            
+            script.onerror = function() {
+                console.error('❌ Скрипт недоступен');
+                alert('Скрипт недоступен. Проверьте URL или настройки.');
+                delete window.testCallback;
+            };
+            
+            script.src = testUrl;
+            document.body.appendChild(script);
+            
+            setTimeout(() => {
+                if (document.body.contains(script)) {
+                    document.body.removeChild(script);
+                    delete window.testCallback;
+                }
+            }, 5000);
+        };
+        function checkLastSubmission() {
+        const lastRecordId = localStorage.getItem('lastRecordId');
+        if (lastRecordId) {
+            alert(`ID вашей последней заявки: ${lastRecordId}\nПроверьте вашу почту.`);
+        } else {
+            alert('У вас нет отправленных заявок в этом браузере.');
+        }
+        }
     </script>
 </body>
 </html>
