@@ -356,7 +356,7 @@
     <script>
         // Инициализация
         let signaturePad = null;
-        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwY2mGd1PjZK9iPcxuOc7ezkXZYJpOSLbIbUyul1g4VEITU799qx-rDRuoWr-Rgk1V6/exec'; // Замените на ваш URL
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwIjoOLU687LVmIKCXYtmwsjXGkVGKC-I42cdREGNcLxl6bKzNwlZTaNkr3aI4yfkU/exec'; // Замените на ваш URL
         
         // ОБРАБОТКА ФОРМЫ - ИСПРАВЛЕННАЯ ВЕРСИЯ
         document.addEventListener('DOMContentLoaded', function() {
@@ -449,10 +449,7 @@
                 submitBtn.textContent = 'Отправка...';
                 
                 try {
-                    // Конвертируем подпись в base64
                     const signatureData = signaturePad.toDataURL();
-                    
-                    // Подготовка данных
                     const formData = {
                         name: name,
                         email: email,
@@ -465,45 +462,45 @@
                     
                     console.log('📤 Отправляю данные:', formData);
                     
-                    // === ИСПРАВЛЕННАЯ ОТПРАВКА ДЛЯ CORS ===
-                    // Способ 1: Используем Google Apps Script напрямую через form submit
-                    const formAction = `${GOOGLE_SCRIPT_URL}?callback=?`;
+                    // === РЕШЕНИЕ ДЛЯ CORS: Используем Google Apps Script как прокси ===
+                    // Создаем временную форму для отправки
+                    const tempForm = document.createElement('form');
+                    tempForm.method = 'POST';
+                    tempForm.action = GOOGLE_SCRIPT_URL;
+                    tempForm.target = 'hiddenFrame';
+                    tempForm.style.display = 'none';
                     
-                    // Создаем скрытую форму для отправки
-                    const hiddenForm = document.createElement('form');
-                    hiddenForm.method = 'POST';
-                    hiddenForm.action = GOOGLE_SCRIPT_URL;
-                    hiddenForm.target = '_blank'; // Открывает в новом окне/вкладке
-                    hiddenForm.style.display = 'none';
+                    // Добавляем скрытые поля
+                    const dataInput = document.createElement('input');
+                    dataInput.type = 'hidden';
+                    dataInput.name = 'data';
+                    dataInput.value = JSON.stringify(formData);
+                    tempForm.appendChild(dataInput);
                     
-                    // Добавляем данные как скрытые поля
-                    Object.keys(formData).forEach(key => {
-                        const input = document.createElement('input');
-                        input.type = 'hidden';
-                        input.name = key;
-                        input.value = formData[key];
-                        hiddenForm.appendChild(input);
-                    });
+                    // Добавляем скрытый iframe для ответа
+                    const iframe = document.createElement('iframe');
+                    iframe.name = 'hiddenFrame';
+                    iframe.style.display = 'none';
+                    document.body.appendChild(iframe);
                     
-                    // Добавляем форму на страницу и отправляем
-                    document.body.appendChild(hiddenForm);
-                    hiddenForm.submit();
+                    // Отправляем форму
+                    document.body.appendChild(tempForm);
+                    tempForm.submit();
                     
-                    // Удаляем форму после отправки
+                    // Очищаем
                     setTimeout(() => {
-                        document.body.removeChild(hiddenForm);
-                    }, 1000);
+                        document.body.removeChild(tempForm);
+                        document.body.removeChild(iframe);
+                    }, 5000);
                     
                     showMessage('✅ Форма отправлена! Проверьте вашу почту.', 'success');
-                    
-                    // Сброс формы
                     form.reset();
                     clearSignature();
                     placeholder.style.display = 'block';
                     
                 } catch (error) {
-                    console.error('❌ Ошибка отправки:', error);
-                    showMessage('Ошибка отправки: ' + error.message, 'error');
+                    console.error('❌ Ошибка:', error);
+                    showMessage('Ошибка: ' + error.message, 'error');
                 } finally {
                     submitBtn.disabled = false;
                     submitBtn.textContent = 'Отправить форму';
