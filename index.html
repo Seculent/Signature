@@ -180,6 +180,98 @@
                 font-size: 24px;
             }
         }
+        /* Добавьте эти стили в существующий <style> блок */
+
+        /* Фиксируем размер canvas контейнера */
+        .canvas-container {
+            position: relative;
+            width: 100%;
+            height: 200px; /* Фиксированная высота */
+            max-height: 200px;
+            min-height: 150px;
+            overflow: hidden;
+            border: 2px dashed #ccc;
+            border-radius: 10px;
+            background: #f9f9f9;
+            touch-action: none;
+        }
+
+        /* Canvas должен заполнять контейнер */
+        #signature-pad {
+            width: 100% !important;
+            height: 100% !important;
+            display: block;
+        }
+
+        /* Предотвращаем масштабирование на мобильных */
+        @media (max-width: 768px) {
+            .container {
+                padding: 15px !important;
+                margin: 10px;
+            }
+            
+            .canvas-container {
+                height: 180px;
+            }
+            
+            input, select {
+                font-size: 16px !important; /* Предотвращает зум в iOS */
+            }
+            
+            /* Предотвращаем увеличение формы при фокусе в iOS */
+            textarea:focus, input:focus, select:focus {
+                font-size: 16px !important;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 10px !important;
+                border-radius: 15px;
+            }
+            
+            .canvas-container {
+                height: 150px;
+            }
+            
+            h1 {
+                font-size: 20px !important;
+                margin-bottom: 20px !important;
+            }
+            
+            .form-group {
+                margin-bottom: 15px !important;
+            }
+            
+            input, select {
+                padding: 10px 12px !important;
+            }
+            
+            .submit-btn {
+                padding: 12px !important;
+                font-size: 16px !important;
+            }
+        }
+
+        /* Предотвращаем выделение текста при касании на мобильных */
+        * {
+            -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        input, textarea, select {
+            -webkit-user-select: text;
+            user-select: text;
+        }
+
+        /* Исправление для iOS Safari */
+        @supports (-webkit-overflow-scrolling: touch) {
+            .canvas-container {
+                -webkit-overflow-scrolling: touch;
+            }
+        }
     </style>
 </head>
 <body>
@@ -264,8 +356,9 @@
     <script>
         // Инициализация
         let signaturePad = null;
-        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwEiBDRW4TO2GGjpRnIpCbXxPVOvNp6ddEBz0xEBFI8P8La3wRUbcXGPRJrNsBVz7zC/exec'; // Замените на ваш URL
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw7o8UAP91EiJlj8cJNuVPSE2XrkSHLy5AMoAXv5bfeM_WTWK2_jwFeWRd-zVcWXBDF/exec'; // Замените на ваш URL
         
+        // ОБРАБОТКА ФОРМЫ - ИСПРАВЛЕННАЯ ВЕРСИЯ
         document.addEventListener('DOMContentLoaded', function() {
             // Инициализируем поле для подписи
             const canvas = document.getElementById('signature-pad');
@@ -279,17 +372,23 @@
                 throttle: 16
             });
             
-            // Адаптируем размер canvas к экрану
+            // Функция для адаптации размера canvas
             function resizeCanvas() {
+                const container = canvas.parentElement;
                 const ratio = Math.max(window.devicePixelRatio || 1, 1);
-                canvas.width = canvas.offsetWidth * ratio;
-                canvas.height = canvas.offsetHeight * ratio;
+                
+                // Устанавливаем размеры canvas по размеру контейнера
+                canvas.width = container.offsetWidth * ratio;
+                canvas.height = container.offsetHeight * ratio;
                 canvas.getContext("2d").scale(ratio, ratio);
+                
+                // Очищаем и перерисовываем
                 signaturePad.clear();
             }
             
+            // Инициализируем размер
+            setTimeout(resizeCanvas, 100);
             window.addEventListener("resize", resizeCanvas);
-            resizeCanvas();
             
             // Скрываем плейсхолдер при рисовании
             canvas.addEventListener('mousedown', hidePlaceholder);
@@ -317,8 +416,11 @@
                 // Валидация
                 const name = document.getElementById('name').value.trim();
                 const email = document.getElementById('email').value.trim();
+                const phone = document.getElementById('phone').value.trim();
+                const procedure = document.getElementById('procedure').value;
+                const consent = document.getElementById('consent').checked;
                 
-                if (!name || !email) {
+                if (!name || !email || !phone || !procedure || !consent) {
                     showMessage('Заполните все обязательные поля', 'error');
                     return;
                 }
@@ -335,6 +437,13 @@
                     return;
                 }
                 
+                // Валидация телефона (простая проверка)
+                const phoneRegex = /^[\d\s\-\+\(\)]+$/;
+                if (!phoneRegex.test(phone)) {
+                    showMessage('Введите корректный номер телефона', 'error');
+                    return;
+                }
+                
                 // Отключаем кнопку
                 submitBtn.disabled = true;
                 submitBtn.textContent = 'Отправка...';
@@ -343,11 +452,6 @@
                     // Конвертируем подпись в base64
                     const signatureData = signaturePad.toDataURL();
                     
-                    // Получаем дополнительные поля
-                    const phone = document.getElementById('phone').value.trim();
-                    const procedure = document.getElementById('procedure').value;
-                    const consent = document.getElementById('consent').checked;
-
                     // Подготовка данных
                     const formData = {
                         name: name,
@@ -358,37 +462,74 @@
                         signature: signatureData,
                         timestamp: new Date().toISOString()
                     };
-
-                    console.log('📤 Отправляемые данные:', formData);
+                    
+                    console.log('📤 Отправляю данные:', formData);
                     
                     // Отправка на Google Apps Script
                     const response = await fetch(GOOGLE_SCRIPT_URL, {
                         method: 'POST',
-                        mode: 'no-cors', // Для обхода CORS
                         headers: {
                             'Content-Type': 'application/json',
                         },
                         body: JSON.stringify(formData)
                     });
                     
-                    // В режиме no-cors мы не можем прочитать ответ,
-                    // поэтому считаем успешным, если нет ошибок сети
-                    showMessage('Форма успешно отправлена!', 'success');
+                    // Проверяем ответ
+                    if (!response.ok) {
+                        throw new Error(`Ошибка HTTP: ${response.status}`);
+                    }
                     
-                    // Сброс формы
-                    form.reset();
-                    clearSignature();
-                    placeholder.style.display = 'block';
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        showMessage('✅ Форма успешно отправлена! Проверьте вашу почту.', 'success');
+                        
+                        // Сброс формы
+                        form.reset();
+                        clearSignature();
+                        placeholder.style.display = 'block';
+                        
+                        // Показываем дополнительную информацию
+                        setTimeout(() => {
+                            showMessage('📧 На ваш email отправлено письмо с соглашением в формате PDF', 'success');
+                        }, 2000);
+                        
+                    } else {
+                        throw new Error(result.error || 'Неизвестная ошибка');
+                    }
                     
                 } catch (error) {
-                    console.error('Ошибка:', error);
-                    showMessage('Ошибка при отправке формы. Попробуйте еще раз.', 'error');
+                    console.error('❌ Ошибка отправки:', error);
+                    
+                    // Более информативное сообщение об ошибке
+                    let errorMessage = 'Ошибка при отправке формы. ';
+                    
+                    if (error.message.includes('Failed to fetch')) {
+                        errorMessage += 'Проверьте подключение к интернету.';
+                    } else if (error.message.includes('CORS')) {
+                        errorMessage += 'Проблема с настройками сервера.';
+                    } else {
+                        errorMessage += error.message;
+                    }
+                    
+                    showMessage(errorMessage, 'error');
+                    
+                    // Показываем кнопку для повторной отправки
+                    setTimeout(() => {
+                        showMessage('<button onclick="retrySubmission()">Попробовать снова</button>', 'error');
+                    }, 3000);
+                    
                 } finally {
                     submitBtn.disabled = false;
                     submitBtn.textContent = 'Отправить форму';
                 }
             });
         });
+
+        // Функция повторной отправки
+        function retrySubmission() {
+            document.getElementById('signatureForm').dispatchEvent(new Event('submit'));
+        }
         
         // Функция очистки подписи
         function clearSignature() {
@@ -410,6 +551,26 @@
                 }, 5000);
             }
         }
+    
+            // Отладка для мобильных устройств
+        console.log('📱 Устройство:', navigator.userAgent);
+        console.log('📏 Размер экрана:', window.innerWidth, 'x', window.innerHeight);
+
+        // Отслеживаем изменения размера
+        window.addEventListener('resize', function() {
+            console.log('🔄 Изменен размер:', window.innerWidth, 'x', window.innerHeight);
+        });
+
+        // Отслеживаем касания на canvas
+        canvas.addEventListener('touchstart', function(e) {
+            console.log('👆 Касание начато, touches:', e.touches.length);
+            e.preventDefault(); // Предотвращаем стандартное поведение
+        }, { passive: false });
+
+        canvas.addEventListener('touchmove', function(e) {
+            console.log('🖐️ Касание движется');
+            e.preventDefault(); // Предотвращаем скролл страницы
+        }, { passive: false });
     </script>
 </body>
 </html>
