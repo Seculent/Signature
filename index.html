@@ -356,7 +356,7 @@
     <script>
         // Инициализация
         let signaturePad = null;
-        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw7o8UAP91EiJlj8cJNuVPSE2XrkSHLy5AMoAXv5bfeM_WTWK2_jwFeWRd-zVcWXBDF/exec'; // Замените на ваш URL
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwY2mGd1PjZK9iPcxuOc7ezkXZYJpOSLbIbUyul1g4VEITU799qx-rDRuoWr-Rgk1V6/exec'; // Замените на ваш URL
         
         // ОБРАБОТКА ФОРМЫ - ИСПРАВЛЕННАЯ ВЕРСИЯ
         document.addEventListener('DOMContentLoaded', function() {
@@ -465,60 +465,45 @@
                     
                     console.log('📤 Отправляю данные:', formData);
                     
-                    // Отправка на Google Apps Script
-                    const response = await fetch(GOOGLE_SCRIPT_URL, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify(formData)
+                    // === ИСПРАВЛЕННАЯ ОТПРАВКА ДЛЯ CORS ===
+                    // Способ 1: Используем Google Apps Script напрямую через form submit
+                    const formAction = `${GOOGLE_SCRIPT_URL}?callback=?`;
+                    
+                    // Создаем скрытую форму для отправки
+                    const hiddenForm = document.createElement('form');
+                    hiddenForm.method = 'POST';
+                    hiddenForm.action = GOOGLE_SCRIPT_URL;
+                    hiddenForm.target = '_blank'; // Открывает в новом окне/вкладке
+                    hiddenForm.style.display = 'none';
+                    
+                    // Добавляем данные как скрытые поля
+                    Object.keys(formData).forEach(key => {
+                        const input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = key;
+                        input.value = formData[key];
+                        hiddenForm.appendChild(input);
                     });
                     
-                    // Проверяем ответ
-                    if (!response.ok) {
-                        throw new Error(`Ошибка HTTP: ${response.status}`);
-                    }
+                    // Добавляем форму на страницу и отправляем
+                    document.body.appendChild(hiddenForm);
+                    hiddenForm.submit();
                     
-                    const result = await response.json();
+                    // Удаляем форму после отправки
+                    setTimeout(() => {
+                        document.body.removeChild(hiddenForm);
+                    }, 1000);
                     
-                    if (result.success) {
-                        showMessage('✅ Форма успешно отправлена! Проверьте вашу почту.', 'success');
-                        
-                        // Сброс формы
-                        form.reset();
-                        clearSignature();
-                        placeholder.style.display = 'block';
-                        
-                        // Показываем дополнительную информацию
-                        setTimeout(() => {
-                            showMessage('📧 На ваш email отправлено письмо с соглашением в формате PDF', 'success');
-                        }, 2000);
-                        
-                    } else {
-                        throw new Error(result.error || 'Неизвестная ошибка');
-                    }
+                    showMessage('✅ Форма отправлена! Проверьте вашу почту.', 'success');
+                    
+                    // Сброс формы
+                    form.reset();
+                    clearSignature();
+                    placeholder.style.display = 'block';
                     
                 } catch (error) {
                     console.error('❌ Ошибка отправки:', error);
-                    
-                    // Более информативное сообщение об ошибке
-                    let errorMessage = 'Ошибка при отправке формы. ';
-                    
-                    if (error.message.includes('Failed to fetch')) {
-                        errorMessage += 'Проверьте подключение к интернету.';
-                    } else if (error.message.includes('CORS')) {
-                        errorMessage += 'Проблема с настройками сервера.';
-                    } else {
-                        errorMessage += error.message;
-                    }
-                    
-                    showMessage(errorMessage, 'error');
-                    
-                    // Показываем кнопку для повторной отправки
-                    setTimeout(() => {
-                        showMessage('<button onclick="retrySubmission()">Попробовать снова</button>', 'error');
-                    }, 3000);
-                    
+                    showMessage('Ошибка отправки: ' + error.message, 'error');
                 } finally {
                     submitBtn.disabled = false;
                     submitBtn.textContent = 'Отправить форму';
