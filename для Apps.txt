@@ -1,0 +1,463 @@
+// === НАСТРОЙКИ ===
+const CONFIG = {
+  emailTo: 'akhmadeev93@gmail.com',
+  salonName: 'Салон красоты',
+  logoUrl: 'https://ваш-сайт/logo.png',
+  spreadsheetId: '1K00wcw4QC0jrKA4Urqi1qiWqyTkHHGsNy5FtRbqsbPg' // Ваш ID таблицы
+};
+
+// === ОБРАБОТКА POST ЗАПРОСОВ ===
+function doPost(e) {
+  console.log('📨 POST запрос получен');
+  
+  try {
+    // Получаем данные из POST
+    let formData;
+    if (e.postData && e.postData.contents) {
+      formData = JSON.parse(e.postData.contents);
+    } else {
+      throw new Error('Нет данных в запросе');
+    }
+    
+    console.log('📝 Получены данные для:', formData.name);
+    
+    // Обрабатываем данные
+    const result = processFormDataAsync(formData);
+    
+    // Возвращаем успешный ответ
+    return ContentService
+      .createTextOutput(JSON.stringify({
+        success: true,
+        message: 'Форма обработана'
+      }))
+      .setMimeType(ContentService.MimeType.JSON);
+      
+  } catch (error) {
+    console.error('❌ Ошибка в doPost:', error);
+    
+    return ContentService
+      .createTextOutput(JSON.stringify({
+        success: false,
+        error: error.message
+      }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+// === ГЛАВНАЯ ФУНКЦИЯ ===
+function doGet(e) {
+  console.log('📨 GET запрос от iframe');
+  console.log('Параметры:', JSON.stringify(e?.parameters || {}, null, 2));
+  
+  // Если есть данные - обрабатываем
+  if (e?.parameters?.name || e?.parameters?.data) {
+    try {
+      let formData;
+      
+      // Извлекаем данные из параметров
+      if (e.parameters.data) {
+        formData = JSON.parse(e.parameters.data[0]);
+      } else {
+        formData = {
+          name: e.parameters.name ? e.parameters.name[0] : 'Не указано',
+          email: e.parameters.email ? e.parameters.email[0] : 'Не указано',
+          phone: e.parameters.phone ? e.parameters.phone[0] : 'Не указано',
+          procedure: e.parameters.procedure ? e.parameters.procedure[0] : 'Не указано',
+          consent: e.parameters.consent ? e.parameters.consent[0] === 'true' : false,
+          signature: e.parameters.signature ? e.parameters.signature[0] : '',
+          timestamp: new Date().toISOString()
+        };
+      }
+      
+      console.log('📝 Данные клиента:', formData.name, formData.email);
+      
+      // Обрабатываем данные (асинхронно, чтобы не блокировать iframe)
+      processFormDataAsync(formData);
+      
+      // Сразу возвращаем ответ для iframe
+      return HtmlService.createHtmlOutput(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              background: #f5f5f5;
+              margin: 0;
+              padding: 20px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              min-height: 100vh;
+            }
+            .success-message {
+              background: white;
+              padding: 40px;
+              border-radius: 15px;
+              box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+              text-align: center;
+              max-width: 500px;
+            }
+            .success-icon {
+              font-size: 60px;
+              color: #4CAF50;
+              margin-bottom: 20px;
+            }
+            h2 {
+              color: #333;
+              margin-bottom: 15px;
+            }
+            p {
+              color: #666;
+              line-height: 1.6;
+              margin-bottom: 10px;
+            }
+            .close-btn {
+              background: #4CAF50;
+              color: white;
+              border: none;
+              padding: 12px 30px;
+              border-radius: 25px;
+              font-size: 16px;
+              cursor: pointer;
+              margin-top: 20px;
+              transition: background 0.3s;
+            }
+            .close-btn:hover {
+              background: #45a049;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="success-message">
+            <div class="success-icon">✅</div>
+            <h2>Форма успешно отправлена!</h2>
+            <p>Спасибо, ${formData.name}!</p>
+            <p>Ваши данные получены и обрабатываются.</p>
+            <p>📧 На вашу почту будет отправлено подтверждение.</p>
+            <p>📄 PDF документ будет отправлен владельцу салона.</p>
+            <button class="close-btn" onclick="sendSuccessMessage()">Закрыть</button>
+            
+            <script>
+              function sendSuccessMessage() {
+                // Отправляем сообщение родительскому окну
+                window.parent.postMessage('formSuccess', '*');
+              }
+              
+              // Автоматически отправляем сообщение через 3 секунды
+              setTimeout(sendSuccessMessage, 3000);
+            </script>
+          </div>
+        </body>
+        </html>
+      `);
+      
+    } catch (error) {
+      console.error('❌ Ошибка обработки:', error);
+      
+      return HtmlService.createHtmlOutput(`
+        <!DOCTYPE html>
+        <html>
+        <body style="font-family: Arial; padding: 20px; background: #f8d7da; color: #721c24;">
+          <h2>❌ Ошибка обработки</h2>
+          <p>${error.message}</p>
+          <button onclick="window.parent.postMessage('formError', '*')">Закрыть</button>
+          <script>
+            setTimeout(() => window.parent.postMessage('formError', '*'), 2000);
+          </script>
+        </body>
+        </html>
+      `);
+    }
+  }
+  
+  // Если нет параметров - показываем инфо страницу
+  return HtmlService.createHtmlOutput(`
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial; padding: 20px;">
+      <h2>✅ Скрипт готов к работе</h2>
+      <p>Используйте iframe метод для отправки данных.</p>
+      <p>Пример URL: ${ScriptApp.getService().getUrl()}?name=Тест&email=test@example.com</p>
+    </body>
+    </html>
+  `);
+}
+
+// === АСИНХРОННАЯ ОБРАБОТКА ДАННЫХ ===
+function processFormDataAsync(formData) {
+  // Запускаем обработку в фоне
+  try {
+    // 1. Сохраняем в таблицу
+    saveToSheet(formData);
+    
+    // 2. Отправляем PDF на email
+    sendPdfEmail(formData);
+    
+    // 3. Отправляем подтверждение клиенту
+    sendClientConfirmation(formData);
+    
+    console.log('✅ Все операции выполнены для:', formData.name);
+    
+  } catch (error) {
+    console.error('❌ Ошибка обработки данных:', error);
+    // Отправляем уведомление об ошибке
+    MailApp.sendEmail({
+      to: CONFIG.emailTo,
+      subject: '⚠️ Ошибка обработки формы',
+      body: `Ошибка для клиента ${formData.name}: ${error.message}\n\n${error.stack}`
+    });
+  }
+}
+
+// === СОХРАНЕНИЕ В ТАБЛИЦУ ===
+function saveToSheet(data) {
+  try {
+    const ss = SpreadsheetApp.openById(CONFIG.spreadsheetId);
+    const sheet = ss.getSheetByName('Заявки') || ss.insertSheet('Заявки');
+    
+    // Заголовки
+    if (sheet.getLastRow() === 0) {
+      sheet.appendRow(['Дата', 'Имя', 'Email', 'Телефон', 'Процедура', 'Согласие', 'Подпись', 'Время обработки']);
+    }
+    
+    // Данные
+    sheet.appendRow([
+      new Date(),
+      data.name || '',
+      data.email || '',
+      data.phone || '',
+      data.procedure || '',
+      data.consent ? 'ДА' : 'НЕТ',
+      data.signature ? 'Есть' : 'Нет',
+      new Date().toISOString()
+    ]);
+    
+    console.log('✅ Данные сохранены в таблицу:', data.name);
+    return true;
+    
+  } catch (error) {
+    console.error('❌ Ошибка сохранения:', error);
+    return false;
+  }
+}
+
+function createPdfWithSignatureBlob(htmlContent, data) {
+  try {
+    // Создаем HTML блоб
+    const htmlBlob = Utilities.newBlob(htmlContent, 'text/html', 'temp.html');
+    
+    // Если есть подпись, обрабатываем её
+    if (data.signature && data.signature.startsWith('data:image')) {
+      try {
+        // Конвертируем base64 в блоб
+        const signatureData = data.signature.split(',')[1];
+        const signatureBlob = Utilities.newBlob(
+          Utilities.base64Decode(signatureData),
+          'image/png',
+          'signature.png'
+        );
+        
+        // Временное сохранение изображения
+        const signatureUrl = DriveApp.createFile(signatureBlob).getDownloadUrl();
+        
+        // Заменяем base64 на URL в HTML
+        htmlContent = htmlContent.replace(
+          data.signature, 
+          signatureUrl
+        );
+      } catch (imgError) {
+        console.warn('Не удалось обработать подпись:', imgError);
+      }
+    }
+    
+    const pdfBlob = htmlBlob.getAs('application/pdf');
+    const date = new Date().toISOString().split('T')[0];
+    const safeName = (data.name || 'Клиент').replace(/[^a-zA-ZА-Яа-я0-9\s]/g, '').replace(/\s+/g, '_');
+    const filename = `Соглашение_${safeName}_${date}.pdf`;
+    
+    pdfBlob.setName(filename);
+    return pdfBlob;
+    
+  } catch (error) {
+    console.error('Ошибка создания PDF:', error);
+    throw error;
+  }
+}
+
+// === ОТПРАВКА PDF ===
+function sendPdfEmail(data) {
+  try {
+    console.log('📧 Генерация PDF для:', data.name);
+    
+    // Генерируем PDF
+    const htmlContent = generatePdfHtml(data);
+    const pdfBlob = createPdfBlob(htmlContent, data.name);
+    
+    // Email текст
+    const emailBody = `
+Новая заявка из формы:
+
+👤 Клиент: ${data.name}
+📧 Email: ${data.email}
+📞 Телефон: ${data.phone || 'не указан'}
+💆 Процедура: ${data.procedure || 'не указана'}
+✅ Согласие: ${data.consent ? 'получено' : 'нет'}
+📝 Подпись: ${data.signature ? 'приложена' : 'нет'}
+
+PDF документ с соглашением прикреплен к письму.
+    `.trim();
+    
+    // Отправляем
+    GmailApp.sendEmail(
+      CONFIG.emailTo,
+      `✅ Соглашение: ${data.name} - ${new Date().toLocaleDateString('ru-RU')}`,
+      emailBody,
+      {
+        attachments: [pdfBlob],
+        name: CONFIG.salonName
+      }
+    );
+    
+    console.log('✅ PDF отправлен на email');
+    
+  } catch (error) {
+    console.error('❌ Ошибка отправки PDF:', error);
+    throw error;
+  }
+}
+
+function logToSheet(message) {
+  const ss = SpreadsheetApp.openById(CONFIG.spreadsheetId);
+  const logSheet = ss.getSheetByName('Логи') || ss.insertSheet('Логи');
+  logSheet.appendRow([new Date(), message]);
+}
+
+// === ПОДТВЕРЖДЕНИЕ КЛИЕНТУ ===
+function sendClientConfirmation(data) {
+  try {
+    const body = `
+Уважаемый(ая) ${data.name},
+
+Благодарим вас за предоставленное согласие на проведение процедуры в нашем салоне.
+
+Ваше соглашение успешно зарегистрировано ${new Date().toLocaleDateString('ru-RU')}.
+
+Мы свяжемся с вами для подтверждения записи.
+
+С уважением,
+${CONFIG.salonName}
+    `.trim();
+    
+    MailApp.sendEmail({
+      to: data.email,
+      subject: `${CONFIG.salonName} - Ваше соглашение получено`,
+      body: body
+    });
+    
+    console.log('✅ Подтверждение отправлено клиенту');
+    
+  } catch (error) {
+    console.error('❌ Ошибка отправки подтверждения:', error);
+  }
+}
+
+// === ГЕНЕРАЦИЯ HTML ДЛЯ PDF (ваш существующий код) ===
+function generatePdfHtml(data) {
+  const today = new Date();
+  const dateStr = today.toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  });
+  
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: Arial, sans-serif; padding: 40px; }
+    .header { text-align: center; margin-bottom: 40px; }
+    .salon-name { color: #e91e63; font-size: 28px; }
+    .client-info { background: #f9f9f9; padding: 20px; border-radius: 10px; margin: 20px 0; }
+    .signature-box { margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1 class="salon-name">${CONFIG.salonName}</h1>
+    <p>Соглашение клиента</p>
+    <p>№ ${Math.floor(Math.random() * 10000)}/${today.getFullYear()} от ${dateStr}</p>
+  </div>
+  
+  <div class="client-info">
+    <h3>Данные клиента:</h3>
+    <p><strong>ФИО:</strong> ${data.name}</p>
+    <p><strong>Email:</strong> ${data.email}</p>
+    ${data.phone ? `<p><strong>Телефон:</strong> ${data.phone}</p>` : ''}
+    ${data.procedure ? `<p><strong>Процедура:</strong> ${data.procedure}</p>` : ''}
+  </div>
+  
+  <div>
+    <h3>Соглашение:</h3>
+    <p>Я, ${data.name}, подтверждаю согласие со всеми условиями процедуры.</p>
+  </div>
+  
+  <div class="signature-box">
+    <p><strong>Подпись клиента:</strong></p>
+    ${data.signature ? `<img src="${data.signature}" style="max-width: 300px; border: 1px solid #ddd;">` : '<p>Электронная подпись</p>'}
+    <p>${data.name}</p>
+    <p>${dateStr}</p>
+  </div>
+</body>
+</html>
+  `;
+}
+
+// === СОЗДАНИЕ PDF ===
+function createPdfBlob(htmlContent, clientName) {
+  try {
+    const htmlBlob = Utilities.newBlob(htmlContent, 'text/html', 'temp.html');
+    const pdfBlob = htmlBlob.getAs('application/pdf');
+    
+    const date = new Date().toISOString().split('T')[0];
+    const safeName = (clientName || 'Клиент').replace(/[^a-zA-ZА-Яа-я\s]/g, '').replace(/\s+/g, '_');
+    const filename = `Соглашение_${safeName}_${date}.pdf`;
+    
+    pdfBlob.setName(filename);
+    console.log('✅ PDF создан:', filename);
+    
+    return pdfBlob;
+    
+  } catch (error) {
+    console.error('❌ Ошибка создания PDF:', error);
+    
+    // Альтернатива
+    const textContent = `СОГЛАШЕНИЕ\n\n${clientName}\n\n${new Date().toLocaleString()}`;
+    return Utilities.newBlob(textContent, 'text/plain', 'Соглашение.txt');
+  }
+}
+
+// === ТЕСТОВАЯ ФУНКЦИЯ ===
+function testIframeMethod() {
+  const testData = {
+    name: "Тестовый Клиент",
+    email: CONFIG.emailTo,
+    phone: "+7 (999) 123-45-67",
+    procedure: "Массаж",
+    consent: true,
+    signature: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+  };
+  
+  // Формируем тестовый URL
+  const params = Object.keys(testData)
+    .map(key => `${key}=${encodeURIComponent(testData[key])}`)
+    .join('&');
+  
+  const url = `${ScriptApp.getService().getUrl()}?${params}`;
+  console.log('🔗 Тестовый URL:', url);
+  console.log('Откройте в браузере для проверки');
+}
